@@ -2,10 +2,6 @@ name: Build Windows EXE
 
 on:
   push:
-    paths:
-      - "hwpx_to_hwp_converter_v1_0.py"
-      - "build.bat"
-      - ".github/workflows/build-exe.yml"
   workflow_dispatch:
 
 jobs:
@@ -14,23 +10,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build conversion engine
+        shell: bash
+        run: ./scripts/build_engine.sh
+
+      - name: Build minimal Java runtime
+        shell: bash
+        run: >
+          jlink
+          --add-modules java.base,java.xml,java.desktop,java.logging,java.management,java.naming,java.sql,java.scripting,jdk.unsupported,jdk.zipfs,jdk.charsets
+          --strip-debug --no-header-files --no-man-pages --compress=zip-6
+          --output build/runtime
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pywin32 pyinstaller
+      - name: Install PyInstaller
+        run: python -m pip install pyinstaller
 
       - name: Build exe
+        shell: bash
         run: >
-          python -m PyInstaller --noconfirm --onefile --windowed
-          --name HWPX_to_HWP_converter_v1_0
-          --hidden-import pythoncom --hidden-import pywintypes --hidden-import win32com.client
-          hwpx_to_hwp_converter_v1_0.py
+          python -m PyInstaller --noconfirm --onedir --windowed
+          --name HWPX_to_HWP
+          --add-data "build/engine;engine"
+          --add-data "build/runtime;runtime"
+          hwpx_to_hwp_converter.py
+
+      - name: Add license notices
+        shell: bash
+        run: |
+          mkdir -p dist/HWPX_to_HWP/licenses
+          cp THIRD_PARTY_NOTICES.md engine/PATCHES.md dist/HWPX_to_HWP/licenses/
+          cp engine/hwpConverter/LICENSE dist/HWPX_to_HWP/licenses/Apache-2.0.txt
+
+      - name: Smoke test (convert sample without Hangul)
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP "시험 문서.hwpx"
+          $dst = Join-Path $env:RUNNER_TEMP "시험 문서.hwp"
+          Copy-Item tests/sample.hwpx $src
+          $p = Start-Process -FilePath dist/HWPX_to_HWP/HWPX_to_HWP.exe -ArgumentList "--convert", "`"$src`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "conversion exit code $($p.ExitCode)" }
+          if (-not (Test-Path $dst)) { throw "output HWP not created" }
+          $head = [System.IO.File]::ReadAllBytes($dst)[0..7] | ForEach-Object { $_.ToString("X2") }
+          if (($head -join "") -ne "D0CF11E0A1B11AE1") { throw "output is not an HWP (OLE) file" }
+          Write-Host "OK: $dst ($((Get-Item $dst).Length) bytes)"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: HWPX_to_HWP_converter_v1_0
-          path: dist/HWPX_to_HWP_converter_v1_0.exe
+          name: HWPX_to_HWP
+          path: dist/HWPX_to_HWP/
