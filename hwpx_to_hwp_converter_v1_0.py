@@ -158,12 +158,23 @@ def _close_current_hwp_document(hwp):
         return
 
 
+def _opened_as_raw_text(hwp) -> bool:
+    """HWPX(zip)가 문서가 아닌 일반 텍스트로 열렸는지 확인 (본문이 'PK...mimetype'으로 시작)"""
+    try:
+        text = hwp.GetTextFile("TEXT", "") or ""
+    except Exception:
+        return False
+    head = text.lstrip()[:200]
+    return head.startswith("PK") and "mimetype" in head
+
+
 def _open_hwpx(hwp, src_path: str):
     errors = []
+    # 형식을 비워 두면 일부 한글 버전에서 HWPX를 일반 텍스트로 열어버리므로 "HWPX"를 먼저 지정
     attempts = [
-        ("", ""),
         ("HWPX", ""),
         ("HWPX", "forceopen:true"),
+        ("", ""),
         ("", "forceopen:true"),
     ]
 
@@ -173,6 +184,10 @@ def _open_hwpx(hwp, src_path: str):
             if result is False:
                 errors.append(f"Open 반환값 False / format={fmt}, option={option}")
                 continue
+            if _opened_as_raw_text(hwp):
+                errors.append(f"문서가 아닌 텍스트로 열림 / format={fmt}, option={option}")
+                _close_current_hwp_document(hwp)
+                continue
             return
         except Exception as exc:
             errors.append(str(exc))
@@ -180,15 +195,27 @@ def _open_hwpx(hwp, src_path: str):
     raise RuntimeError("HWPX 파일 열기 실패: " + " | ".join(errors[-2:]))
 
 
+HWP_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # HWP 5.0 (OLE 복합 문서) 파일 시그니처
+
+
+def is_valid_hwp_file(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(len(HWP_SIGNATURE)) == HWP_SIGNATURE
+    except Exception:
+        return False
+
+
 def _save_as_hwp(hwp, dst_path: str):
     errors = []
 
     # 한글 버전에 따라 저장 포맷 문자열이 다를 수 있어 여러 값 시도
-    for fmt in ("HWP", "HWP File", ""):
+    for fmt in ("HWP", "HWP File"):
         try:
             hwp.SaveAs(dst_path, fmt, "")
-            if os.path.exists(dst_path) and os.path.getsize(dst_path) > 0:
+            if is_valid_hwp_file(dst_path):
                 return
+            errors.append(f"SaveAs({fmt}) 결과가 HWP 형식이 아님")
         except Exception as exc:
             errors.append(f"SaveAs({fmt}) 실패: {exc}")
 
@@ -198,7 +225,7 @@ def _save_as_hwp(hwp, dst_path: str):
         hwp.HParameterSet.HFileOpenSave.Format = "HWP"
         hwp.HParameterSet.HFileOpenSave.Attributes = 0
         hwp.HAction.Execute("FileSaveAs_S", hwp.HParameterSet.HFileOpenSave.HSet)
-        if os.path.exists(dst_path) and os.path.getsize(dst_path) > 0:
+        if is_valid_hwp_file(dst_path):
             return
     except Exception as exc:
         errors.append(f"FileSaveAs_S 실패: {exc}")
@@ -253,8 +280,8 @@ def _convert_hwpx_to_hwp_via_temp(hwp, src_path: str, dst_path: str):
         opened = True
         _save_as_hwp(hwp, str(tmp_out))
 
-        if not tmp_out.exists() or tmp_out.stat().st_size == 0:
-            raise RuntimeError("HWP 파일이 생성되지 않았습니다.")
+        if not is_valid_hwp_file(str(tmp_out)):
+            raise RuntimeError("올바른 HWP 파일이 생성되지 않았습니다.")
 
         _replace_file(tmp_out, dst)
     finally:
@@ -296,7 +323,7 @@ def convert_one_hwpx_to_hwp_replace(src_path: str, visible: bool = False):
     try:
         hwp, _, _, _ = _create_hwp_object(visible=visible)
         _convert_hwpx_to_hwp_via_temp(hwp, src_path, dst_path)
-        if not os.path.exists(dst_path) or os.path.getsize(dst_path) == 0:
+        if not is_valid_hwp_file(dst_path):
             raise RuntimeError("변환된 HWP 파일을 확인할 수 없습니다.")
         ok, msg = _delete_original_hwpx(src_path)
         if not ok:
@@ -716,7 +743,7 @@ class HwpxToHwpApp:
 
                         _convert_hwpx_to_hwp_via_temp(hwp, src_path, dst_path)
 
-                        if not os.path.exists(dst_path) or os.path.getsize(dst_path) == 0:
+                        if not is_valid_hwp_file(dst_path):
                             raise RuntimeError("변환된 HWP 파일을 확인할 수 없습니다.")
 
                         if already_exists:
