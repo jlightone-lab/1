@@ -119,6 +119,16 @@ def _try_register_file_path_security_module(hwp):
     return False, "", last_error
 
 
+def get_hwp_version(hwp) -> str:
+    try:
+        version = hwp.Version
+        if isinstance(version, (list, tuple)):
+            return ".".join(str(v) for v in version)
+        return str(version)
+    except Exception:
+        return "확인 불가"
+
+
 def _create_hwp_object(visible: bool):
     import win32com.client
 
@@ -170,27 +180,29 @@ def _opened_as_raw_text(hwp) -> bool:
 
 def _open_hwpx(hwp, src_path: str):
     errors = []
-    # 형식을 비워 두면 일부 한글 버전에서 HWPX를 일반 텍스트로 열어버리므로 "HWPX"를 먼저 지정
+    # 형식을 비워 두면 HWPX를 일반 텍스트로 읽어 "텍스트 문서 종류" 창이 뜨므로 HWPX 형식만 지정
     attempts = [
         ("HWPX", ""),
         ("HWPX", "forceopen:true"),
-        ("", ""),
-        ("", "forceopen:true"),
     ]
 
     for fmt, option in attempts:
         try:
             result = hwp.Open(src_path, fmt, option)
-            if result is False:
-                errors.append(f"Open 반환값 False / format={fmt}, option={option}")
-                continue
-            if _opened_as_raw_text(hwp):
-                errors.append(f"문서가 아닌 텍스트로 열림 / format={fmt}, option={option}")
-                _close_current_hwp_document(hwp)
-                continue
-            return
         except Exception as exc:
             errors.append(str(exc))
+            continue
+        if result is False:
+            errors.append(f"Open 반환값 False / format={fmt}, option={option}")
+            continue
+        if _opened_as_raw_text(hwp):
+            _close_current_hwp_document(hwp)
+            # 같은 한글에서 다시 시도해도 결과가 같으므로 바로 중단
+            raise RuntimeError(
+                "한글이 이 파일을 HWPX 문서로 인식하지 못하고 텍스트로 열었습니다. "
+                "설치된 한글 버전이 HWPX 열기를 지원하는지 확인하세요."
+            )
+        return
 
     raise RuntimeError("HWPX 파일 열기 실패: " + " | ".join(errors[-2:]))
 
@@ -714,6 +726,7 @@ class HwpxToHwpApp:
             try:
                 hwp, security_ok, security_module_name, security_error = _create_hwp_object(visible=visible)
 
+                self.safe_ui(self.log, f"한글 버전: {get_hwp_version(hwp)}")
                 if security_ok:
                     self.safe_ui(self.log, f"보안승인 모듈 등록: 성공({security_module_name})")
                     self.safe_ui(self.log, "HWP→PDF 변환 도구와 같은 SecurityModule + 임시파일 복사 방식으로 변환합니다.")
