@@ -22,9 +22,10 @@ javac --release 8 -nowarn -encoding UTF-8 -d "$WORK/classes" -cp "lib/*" @"$WORK
 jar cf "$OUT/hwpConverter.jar" -C "$WORK/classes" .
 cp lib/*.jar "$OUT/lib/"
 
-cd "$ROOT/engine/tool"
-javac --release 8 -nowarn -encoding UTF-8 -d "$WORK/tool-classes" \
-  -cp "$OUT/hwpConverter.jar${SEP}$OUT/lib/*" HwpxToHwpTool.java
-jar cf "$OUT/hwpxtool.jar" -C "$WORK/tool-classes" .
+# Windows(Git Bash)의 javac는 /d/a/... 형식 절대경로가 섞인 classpath를 못 읽으므로 상대경로 사용
+cd "$ROOT"
+javac --release 8 -nowarn -encoding UTF-8 -d build/engine-work/tool-classes \
+  -cp "build/engine/hwpConverter.jar${SEP}build/engine/lib/*" engine/tool/HwpxToHwpTool.java
+jar cf build/engine/hwpxtool.jar -C build/engine-work/tool-classes .
 
 echo "engine built: $OUT"
