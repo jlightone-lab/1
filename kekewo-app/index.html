@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>케케우</title>
+  <meta name="description" content="뉴스에도 안 나오는 핫한 이슈·사건 뉴스">
+  <meta name="theme-color" content="#e6332a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="케케우">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <button id="back" class="icon-btn" aria-label="뒤로" hidden>
+        <svg viewBox="0 0 24 24" width="24" height="24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <a href="#/" class="logo">케케우</a>
+      <form id="search-form" class="search" role="search">
+        <input id="search-input" type="search" placeholder="뉴스 검색" aria-label="뉴스 검색" enterkeyhint="search">
+      </form>
+      <button id="install" class="install-btn" hidden>앱 설치</button>
+    </div>
+    <nav id="tabs" class="tabs" aria-label="카테고리"></nav>
+  </header>
+
+  <main id="view"></main>
+
+  <script src="app.js"></script>
+</body>
+</html>
